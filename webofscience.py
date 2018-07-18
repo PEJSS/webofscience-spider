@@ -49,9 +49,12 @@ def getInfo(url,PassageName=[],Info=[],Used=[],Summary=[],AuthorInfo=[],ReferInf
             print(item)
             print(item.find('span',class_='reference-title'))
             authors = item.find_all('span',class_='label')
-            for child in authors:
-                if child.string == '作者: ':
-                    author = child.parent.contents[2]
+            authors = [x.parent.contents[2] for x in authors if x.string == '作者：']
+            # for child in authors:
+                # if child.string == '作者: ':
+                    # author = child.parent.contents[2]
+            if len(authors) == 0:
+                raise ValueError("No authors found!")
             refer += item.find('span',class_='reference-title').value.string + '作者：' + author + ';'
     return [passagename,authorname,publishdate,usedtimes,keywords,summary,address,email,refer]
 
