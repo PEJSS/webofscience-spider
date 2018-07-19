@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 from multiprocessing.dummy import Pool as ThreadPool
 from tqdm import tqdm
 import csv
+import os
 
 def getLink(url,tag,attribute):
     html = urlopen(url)
@@ -38,9 +39,11 @@ def getRefPage(input):
     html2 = urlopen(referlink)
     bso2 = BeautifulSoup(html2.read(),"html.parser")
     raw_refers = bso2.find_all('div',class_='search-results-item')
-    workers = 5
-    pool = ThreadPool(workers)
-    refers = pool.map(getRefInfo, raw_refers)
+    workers = 1
+    try:
+        refers = ThreadPool(workers).map(getRefInfo, raw_refers)
+    except:
+        refers = [getRefInfo(item) for item in raw_refers]
     refer = ''.join(refers)
     return refer
 
@@ -96,27 +99,30 @@ def getInfo(url,PassageName, Info, Used, Summary, AuthorInfo, ReferInfo):
     Url = bso1.find('form',id='summary_records_form')['paging_url']
 
     # Get Webpages with Page Altering
-    workers = N
-    pool = ThreadPool(workers)
+    workers = 1
     inputs = [(Url, x) for x in range(1, N+1)]
-    refers = pool.map(getRefPage, inputs)
+    try:
+        refers = ThreadPool(workers).map(getRefPage, inputs)
+    except:
+        refers = [getRefPage(input) for input in inputs]
     refer = ''.join(refers)
 
     return [passagename, authorname,publishdate,usedtimes,keywords,summary,address,email,refer]
 
-def getPage(start_url, pagenum, workers = 10):
+def getPage(input):
+    start_url, pagenum = input[0], input[1]
+    workers = 10
     journal=getLink(start_url + str(), "a","smallV110 snowplow-full-record")
-    pool = ThreadPool(workers)
-    results = pool.map(getArticle, journal)
-    results = (None, results)
+    try:
+        results = ThreadPool(workers).map(getArticle, journal)
+    except:
+        results = [getArticle(item) for item in journal]
+    results = filter(None, results)
+    return results
     print(10 * '-')
     print("results:")
     print(results)
     print(10 * '-')
-    for b in results:
-        with open('data.csv','a',newline='') as csvfile:
-            writer = csv.writer(csvfile)
-            writer.writerow(b)
 
 def getArticle(item):
     arti='http://apps.webofknowledge.com'+item['href']
@@ -130,20 +136,41 @@ def getArticle(item):
     return b
        
 def main():
+    record_filename = "record"
+    if os.path.exists(record_filename):
+        with open(record_filename) as record:
+            content = record.read()
+            if content == '':
+                next_page = 2
+            else:
+                next_page = int(content)
+    else:
+        next_page = 2
     # Initialize csv file
-    with open('data.csv','w',newline='') as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerow(['文章标题','作者名字','出版年','被引频次',\
-        '关键词','摘要','作者地址','电子邮件','参考文献'])
+    data_filename = 'data.csv'
+    if not os.path.exists(data_filename):
+        with open(data_filename,'w',newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(['文章标题','作者名字','出版年','被引频次',\
+            '关键词','摘要','作者地址','电子邮件','参考文献'])
 
     # start_url = "http://apps.webofknowledge.com/summary.do?product=WOS&parentProduct=WOS&search_mode=GeneralSearch&parentQid=&qid=2&SID=8Ev2lmRWkPOJK5J8HhG&&update_back2search_link_param=yes&page="
-    start_url = "http://apps.webofknowledge.com/summary.do?product=UA&parentProduct=UA&search_mode=GeneralSearch&parentQid=&qid=1&SID=5EtvIBjhu6XJQX4QAaz&&update_back2search_link_param=yes&page="
-    for i in tqdm(range(2, 391)):
-        #try:
-            #getPage(start_url, i)
-        #except Exception as e:
-            #print(e)
-        getPage(start_url, i)
+    start_url = "http://apps.webofknowledge.com/summary.do?product=UA&parentProduct=UA&search_mode=GeneralSearch&parentQid=&qid=402&SID=5EtvIBjhu6XJQX4QAaz&&update_back2search_link_param=yes&page="
+    workers = 1
+    for i in tqdm(range(next_page, int((391 + workers - 1) / workers))):
+        inputs = [(start_url, i * workers + x) for x in range(workers)]
+        try:
+            results_buffer = ThreadPool(workers).map(getPage,inputs)
+        except:
+            results_buffer = [getPage(input) for input in inputs]
+        for results in results_buffer:
+            with open(data_filename,'a',newline='') as csvfile:
+                writer = csv.writer(csvfile)
+                for b in results:
+                    writer.writerow(b)
+        next_page += 1
+        with open(record_filename, 'w') as record:
+            record.write(str(next_page))
 
 if __name__ == '__main__':
     main()
